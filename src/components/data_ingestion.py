@@ -8,11 +8,11 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from dataclasses import dataclass
 from kaggle.api.kaggle_api_extended import KaggleApi
-#from src.components.data_transformation import DataTransformation
-#from src.components.data_transformation import DataTransformationConfig
+from src.components.data_transformation import DataTransformation
+from src.components.data_transformation import DataTransformationConfig
 
-#from src.components.model_trainer import ModelTrainerConfig
-#from src.components.model_trainer import ModelTrainer
+from src.components.model_trainer import ModelTrainerConfig
+from src.components.model_trainer import ModelTrainer
 
 @dataclass
 class DataIngestionConfig:
@@ -61,12 +61,23 @@ class DataIngestion:
 if __name__=="__main__":
     obj=DataIngestion()
     obj.download_from_kaggle()
-    #train_data,test_data=obj.initiate_data_ingestion()
+    train_data,test_data=obj.download_from_kaggle()
+    data_transformation=DataTransformation()
+    X_train,test_arr,y_train,_=data_transformation.get_data_transformer_object()
 
-    '''    data_transformation=DataTransformation()
-        train_arr,test_arr,_=data_transformation.initiate_data_transformation(train_data,test_data)
+    df = pd.DataFrame(X_train)
+    df2=pd.DataFrame(y_train)
+    # Specify the path where you want to save the CSV file
+    # Replace 'your_directory' with the desired directory path
+    output_path = os.path.join('/Users/aswithsama/Desktop/OSNA', 'output1.csv')
+    output_path2=os.path.join('/Users/aswithsama/Desktop/OSNA','output2.csv')
+    # Save DataFrame to CSV at the specified path
+    df.to_csv(output_path, index=False)
+    df2.to_csv(output_path2,index=False)
 
-        modeltrainer=ModelTrainer()
-        print(modeltrainer.initiate_model_trainer(train_arr,test_arr))'''
+    print(f"DataFrame saved to {output_path}")
+    print(f"DataFrame saved to {output_path2}")
+    modeltrainer=ModelTrainer()
+    print(modeltrainer.initiate_model_trainer(X_train,y_train,test_arr))
 
 
