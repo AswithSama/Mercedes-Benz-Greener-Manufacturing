@@ -60,23 +60,15 @@ class DataIngestion:
 
 if __name__=="__main__":
     obj=DataIngestion()
+    #downloading from kaggle
     obj.download_from_kaggle()
     train_data,test_data=obj.download_from_kaggle()
+
+    logging.info(" starting transforming data.....") 
     data_transformation=DataTransformation()
     X_train,test_arr,y_train,_=data_transformation.get_data_transformer_object()
 
-    df = pd.DataFrame(X_train)
-    df2=pd.DataFrame(y_train)
-    # Specify the path where you want to save the CSV file
-    # Replace 'your_directory' with the desired directory path
-    output_path = os.path.join('/Users/aswithsama/Desktop/OSNA', 'output1.csv')
-    output_path2=os.path.join('/Users/aswithsama/Desktop/OSNA','output2.csv')
-    # Save DataFrame to CSV at the specified path
-    df.to_csv(output_path, index=False)
-    df2.to_csv(output_path2,index=False)
-
-    print(f"DataFrame saved to {output_path}")
-    print(f"DataFrame saved to {output_path2}")
+    logging.info(" starting training the model.....") 
     modeltrainer=ModelTrainer()
     print(modeltrainer.initiate_model_trainer(X_train,y_train,test_arr))
 

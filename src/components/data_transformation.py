@@ -19,13 +19,15 @@ class DataTransformationConfig:
     preprocessor_obj_file_path=os.path.join('artifacts',"preprocessor.pkl")
 
 class DataTransformation:
+
     def __init__(self):
         self.data_transformation_config=DataTransformationConfig()
-    
 
     def create_preprocessor(self, whole_dataset):
 
         categorical_columns = whole_dataset.select_dtypes(include='object').columns.tolist()
+
+        logging.info("creating a pipeline and column transformer ")
 
         # Create a pipeline for encoding categorical features
         cat_pipeline = Pipeline(steps=[
@@ -37,6 +39,7 @@ class DataTransformation:
                 ("cat_pipeline", cat_pipeline, categorical_columns)
             ],remainder='passthrough'
         )
+        logging.info("successfully created preprocessor which can be dumped as a pickle file and can be reused later ")
 
         return preprocessor
 
@@ -52,17 +55,14 @@ class DataTransformation:
             df2=train_df.drop(['ID','X4'],axis='columns')
             X_test=X_test.drop(['ID','X4'],axis='columns')
 
+
             #DECIDED TO YOU INTERQUARTILE RANGE TECHNIQUE TO REMOVE OUTLIERS
-
-
             #upper and lower quartiles
             q1=df2['y'].quantile(0.25)
             q3=df2['y'].quantile(0.75)
-
             #upper and lower limit
             upper_limit=q3+(q3-q1)*1.5
             lower_limit=q1-(q3-q1)*1.5
-
             #filtering the outliers
             outlier_indices=df2[(df2['y']>upper_limit) | (df2['y'] < lower_limit)].index
             df3=df2.drop(outlier_indices,axis=0).reset_index(drop=True)  
@@ -71,6 +71,7 @@ class DataTransformation:
 
             X_train=df3.drop(['y'],axis=1)
             y_train=df3.y
+
             #REMOVING THE COLUMNS (binary type) WHICH ARE ONE CATEOGORY DOMINANT AS THEY DONOT HAVE ANY IMPACT ON THE FINAL RESULT AND CERTAINLY AN OVERHEAD
             check_X=X_train.select_dtypes(exclude='object')
                         
@@ -84,9 +85,8 @@ class DataTransformation:
   
 
             #CONCATINATING THE TRAIN AND TEST SETS ARE REQUIRED TO CONSIDER ALL THE CATEGORIES OF ALL FEATURES FROM BOTH TRAIN AND TEST SETS.
-            # Apply preprocessor pipeline
-            #preprocessor = DataTransformation.create_preprocessor(X_train)
-            #print(X_train.shape,X_test.shape)
+            
+            # Applying preprocessor pipeline
             whole_dataset=pd.concat([X_train,X_test],axis=0)
             cat_columns = X_train.select_dtypes(include='object').columns.tolist()
             encoded=pd.get_dummies(whole_dataset,columns=cat_columns,dtype=int)
@@ -95,12 +95,11 @@ class DataTransformation:
                 file_path=self.data_transformation_config.preprocessor_obj_file_path,
                 obj=preprocessing_obj
             )
-            #X_train=encoded.iloc[:len(X_train)]
-            #X_test=encoded.iloc[len(X_train):]
+            logging.info("successfully created the preprocessing object")
+
             preprocessing_obj.fit(whole_dataset)
             X_train = preprocessing_obj.transform(X_train)
             X_test = preprocessing_obj.transform(X_test)
-            #print(X_train.shape,X_test.shape)
 
             return X_train, X_test, y_train, self.data_transformation_config.preprocessor_obj_file_path
                     

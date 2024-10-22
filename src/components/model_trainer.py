@@ -4,20 +4,13 @@ from dataclasses import dataclass
 from src.exception import CustomException
 from src.logger import logging
 from src.utils import save_object,evaluate_models
-from sklearn.svm import SVR
 from catboost import CatBoostRegressor
-from sklearn.ensemble import (
-    AdaBoostRegressor,
-    GradientBoostingRegressor,
-    RandomForestRegressor,
-)
+from sklearn.ensemble import (AdaBoostRegressor,GradientBoostingRegressor,RandomForestRegressor)
 from sklearn.linear_model import LinearRegression
-from sklearn.neighbors import KNeighborsRegressor
 from sklearn.tree import DecisionTreeRegressor
 from xgboost import XGBRegressor
-
+import pandas as pd
 from sklearn.metrics import r2_score
-from sklearn.model_selection import GridSearchCV
 
 
 @dataclass
@@ -31,34 +24,36 @@ class ModelTrainer:
 
     def initiate_model_trainer(self,X_train,y_train,test_array):
         try:
-            logging.info("Split training and test input data")
-            #X_train,y_train,X_test,y_test=train_array[:,:-1],train_array[:,-1],test_array[:,:-1],test_array[:,-1]
+
             X_test=test_array
-            
+            '''            models={
+                "Decision Tree": DecisionTreeRegressor(),
+            }
+            params={
+                "Decision Tree":{
+                    'criterion':['poisson']
+                }
+            }'''
             models = {
-                'Support Vector Regression (SVR)': SVR(),
-                'XGBoost Regression': XGBRegressor(positive=True),
-                'Random Forest Regression': RandomForestRegressor(),
-                'CatBoost Regression': CatBoostRegressor(silent=True)
+                "Random Forest": RandomForestRegressor(),
+                "Decision Tree": DecisionTreeRegressor(),
+                "Gradient Boosting": GradientBoostingRegressor(),
+                "Linear Regression": LinearRegression(),
+                "XGBRegressor": XGBRegressor(),
+                "CatBoosting Regressor": CatBoostRegressor(verbose=False),
+                "AdaBoost Regressor": AdaBoostRegressor(),
             }
             params={
                 "Decision Tree": {
-                    'criterion':['squared_error', 'friedman_mse', 'absolute_error', 'poisson'],
-                    # 'splitter':['best','random'],
-                    # 'max_features':['sqrt','log2'],
+                    'criterion':['squared_error', 'friedman_mse', 'absolute_error', 'poisson']
                 },
                 "Random Forest":{
-                    # 'criterion':['squared_error', 'friedman_mse', 'absolute_error', 'poisson'],
-                 
-                    # 'max_features':['sqrt','log2',None],
                     'n_estimators': [8,16,32,64,128,256]
                 },
                 "Gradient Boosting":{
                     # 'loss':['squared_error', 'huber', 'absolute_error', 'quantile'],
                     'learning_rate':[.1,.01,.05,.001],
                     'subsample':[0.6,0.7,0.75,0.8,0.85,0.9],
-                    # 'criterion':['squared_error', 'friedman_mse'],
-                    # 'max_features':['auto','sqrt','log2'],
                     'n_estimators': [8,16,32,64,128,256]
                 },
                 "Linear Regression":{},
@@ -73,38 +68,44 @@ class ModelTrainer:
                 },
                 "AdaBoost Regressor":{
                     'learning_rate':[.1,.01,0.5,.001],
-                    # 'loss':['linear','square','exponential'],
                     'n_estimators': [8,16,32,64,128,256]
                 }
                 
             }
 
-            model_report=evaluate_models(X_train=X_train,y_train=y_train,X_test=X_test,
-                                             models=models)
+            logging.info("initiating model evaluation")
 
-            '''           ## To get best model score from dict
+            #dictionary that stores r2 scores of all the models
+            model_report=evaluate_models(X_train=X_train,y_train=y_train,X_test=X_test,param=params,models=models)
+
+            ## To get best model score from dict
             best_model_score = max(sorted(model_report.values()))
 
-            ## To get best model name from dict
-
+            
             best_model_name = list(model_report.keys())[
                 list(model_report.values()).index(best_model_score)
             ]
             best_model = models[best_model_name]
 
-            if best_model_score<0.6:
+            if best_model_score<0.5:
                 raise CustomException("No best model found")
-            logging.info(f"Best found model on both training and testing dataset")
+            
+            logging.info(f"Best model found for given training data")
+            print("The best model for the training data found out to be: ",best_model)
 
             save_object(
                 file_path=self.model_trainer_config.trained_model_file_path,
                 obj=best_model
             )
+            logging.info("succesfully saved the model pickle file")
 
-            predicted=best_model.predict(X_test)
-            r2_square = r2_score(y_test, predicted)
+            predicted=best_model.predict(X_train)
+            y_pred = best_model.predict(X_test)
+            df=pd.DataFrame(y_pred)
+            df.to_csv("output.csv",index=False)
+            r2_square = r2_score(y_train, predicted)
+            
             return r2_square
-            '''
 
 
         except Exception as e:
