@@ -1,6 +1,5 @@
 from flask import Flask, session, request, render_template, redirect, send_file
 import pandas as pd
-import io
 import tempfile
 from src.pipeline.predict_pipeline import PredictPipeline
 
@@ -10,11 +9,7 @@ app.secret_key = '1928'
 # Store the temporary file path in session instead of the CSV data
 @app.route('/')
 def index():
-    return render_template('home.html')
-
-@app.route('/testing')
-def testing():
-    return render_template('home.html')
+    return render_template('index.html')
 
 @app.route('/upload_file', methods=['POST'])
 def upload_file():
