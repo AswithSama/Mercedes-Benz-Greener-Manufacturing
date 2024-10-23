@@ -26,15 +26,18 @@ class ModelTrainer:
         try:
 
             X_test=test_array
-            '''            models={
-                "Decision Tree": DecisionTreeRegressor(),
+            models={
+                "Random Forest": RandomForestRegressor(),
             }
             params={
-                "Decision Tree":{
-                    'criterion':['poisson']
+                "Random Forest":{
+                    'n_estimators': [256]
                 }
-            }'''
-            models = {
+            }
+            #AFTER TRAINING THE MODEL WITH ALL THE BELOW PARAMTERS AND MODELS I FOUND RANDOM FOREST WITH 256
+            #ESTIMATERS FOUND OUT TO BE THE BEST ONE, DESPITE DECISION TREE WITH POISSON CRITERION IS GIVING ME
+            #EVEN BETTER RESULT, BUT ITS KIND OF OVERFITTING THE MODEL, SO I DECIDED TO OPT OUT FROM IT
+            '''models = {
                 "Random Forest": RandomForestRegressor(),
                 "Decision Tree": DecisionTreeRegressor(),
                 "Gradient Boosting": GradientBoostingRegressor(),
@@ -71,7 +74,7 @@ class ModelTrainer:
                     'n_estimators': [8,16,32,64,128,256]
                 }
                 
-            }
+            }'''
 
             logging.info("initiating model evaluation")
 

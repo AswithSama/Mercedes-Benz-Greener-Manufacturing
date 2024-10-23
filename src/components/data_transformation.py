@@ -31,7 +31,7 @@ class DataTransformation:
 
         # Create a pipeline for encoding categorical features
         cat_pipeline = Pipeline(steps=[
-            ("one_hot_encoder", OneHotEncoder())
+            ("one_hot_encoder", OneHotEncoder(handle_unknown='ignore'))
         ])
 
         preprocessor = ColumnTransformer(
@@ -88,16 +88,15 @@ class DataTransformation:
             
             # Applying preprocessor pipeline
             whole_dataset=pd.concat([X_train,X_test],axis=0)
-            cat_columns = X_train.select_dtypes(include='object').columns.tolist()
-            encoded=pd.get_dummies(whole_dataset,columns=cat_columns,dtype=int)
             preprocessing_obj=self.create_preprocessor(whole_dataset)
+            preprocessing_obj.fit(whole_dataset)
             save_object(
                 file_path=self.data_transformation_config.preprocessor_obj_file_path,
                 obj=preprocessing_obj
             )
             logging.info("successfully created the preprocessing object")
 
-            preprocessing_obj.fit(whole_dataset)
+            
             X_train = preprocessing_obj.transform(X_train)
             X_test = preprocessing_obj.transform(X_test)
 

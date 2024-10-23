@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Result Page</title>
+</head>
+<body>
+    <h1>File Processed Successfully!</h1>
+    <p>Your file is ready for download. Click the button below to download:</p>
+    
+    <form action="{{ url_for('download_file') }}" method="get">
+        <button type="submit">Download Predictions</button>
+    </form>
+
+    <a href="/">Go Back</a>
+</body>
+</html>

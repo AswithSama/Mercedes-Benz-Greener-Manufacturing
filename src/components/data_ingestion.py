@@ -67,6 +67,7 @@ if __name__=="__main__":
     logging.info(" starting transforming data.....") 
     data_transformation=DataTransformation()
     X_train,test_arr,y_train,_=data_transformation.get_data_transformer_object()
+    
 
     logging.info(" starting training the model.....") 
     modeltrainer=ModelTrainer()
