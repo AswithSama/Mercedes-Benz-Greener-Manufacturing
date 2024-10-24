@@ -3,7 +3,8 @@ import pandas as pd
 import tempfile
 from src.pipeline.predict_pipeline import PredictPipeline
 
-app = Flask(__name__)
+application = Flask(__name__)
+app=application
 app.secret_key = '1928'
 
 # Store the temporary file path in session instead of the CSV data
