@@ -1,18 +1,25 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Result Page</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Predictions | Mercedes-Benz</title>
+  <style>
+    body { font: 16px/1.6 system-ui, sans-serif; max-width: 800px; margin: 64px auto; padding: 0 22px; color: #1b252e; }
+    table { border-collapse: collapse; width: 100%; max-width: 500px; margin: 24px 0; }
+    td, th { text-align: left; border-bottom: 1px solid #dbe3e7; padding: 8px 12px; }
+    a.primary { display: inline-block; color: white; background: #154f6a; text-decoration: none; padding: 11px 18px; border-radius: 7px; }
+    p { color: #526471; }
+  </style>
 </head>
 <body>
-    <h1>File Processed Successfully!</h1>
-    <p>Your file is ready for download. Click the button below to download:</p>
-    
-    <form action="{{ url_for('download_file') }}" method="get">
-        <button type="submit">Download Predictions</button>
-    </form>
-
-    <a href="/">Go Back</a>
+  <h1>Predictions generated</h1>
+  <p>Processed {{ row_count }} rows. The table shows up to 10 predictions.</p>
+  <table>
+    <thead><tr>{% if has_id %}<th>ID</th>{% endif %}<th>Predicted test time</th></tr></thead>
+    <tbody>{% for row in preview %}<tr>{% if has_id %}<td>{{ row.ID }}</td>{% endif %}<td>{{ '%.3f'|format(row.Prediction) }}</td></tr>{% endfor %}</tbody>
+  </table>
+  <a class="primary" href="{{ url_for('download_file') }}">Download CSV predictions</a>
+  <p><a href="{{ url_for('index') }}">Predict another file</a></p>
 </body>
 </html>

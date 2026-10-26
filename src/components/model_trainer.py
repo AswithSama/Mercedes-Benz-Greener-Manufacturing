@@ -1,115 +1,125 @@
-import os
-import sys
-from dataclasses import dataclass
-from src.exception import CustomException
-from src.logger import logging
-from src.utils import save_object,evaluate_models
-from catboost import CatBoostRegressor
-from sklearn.ensemble import (AdaBoostRegressor,GradientBoostingRegressor,RandomForestRegressor)
-from sklearn.linear_model import LinearRegression
-from sklearn.tree import DecisionTreeRegressor
-from xgboost import XGBRegressor
+"""Train the original Random Forest baseline with a valid holdout evaluation."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import numpy as np
 import pandas as pd
-from sklearn.metrics import r2_score
+from sklearn.dummy import DummyRegressor
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
 
+from src.components.data_transformation import DataTransformation
+from src.utils import save_object
 
-@dataclass
-class ModelTrainerConfig:
-    trained_model_file_path=os.path.join("artifacts","model.pkl")
 
 class ModelTrainer:
-    def __init__(self):
-        self.model_trainer_config=ModelTrainerConfig()
+    def __init__(self, n_estimators: int = 256, random_state: int = 42,
+                 test_size: float = 0.20, filter_outliers: bool = True):
+        if n_estimators < 1:
+            raise ValueError("n_estimators must be positive.")
+        if not 0 < test_size < 1:
+            raise ValueError("test_size must be between 0 and 1.")
+        self.n_estimators = n_estimators
+        self.random_state = random_state
+        self.test_size = test_size
+        self.filter_outliers = filter_outliers
 
+    @staticmethod
+    def _scores(y_true, predictions) -> dict:
+        return {
+            "r2": float(r2_score(y_true, predictions)),
+            "mae": float(mean_absolute_error(y_true, predictions)),
+            "rmse": float(np.sqrt(mean_squared_error(y_true, predictions))),
+        }
 
-    def initiate_model_trainer(self,X_train,y_train,test_array):
-        try:
+    def train(self, data: pd.DataFrame, output_dir: str | Path = "artifacts",
+              competition_data: pd.DataFrame | None = None) -> dict:
+        if "y" not in data.columns:
+            raise ValueError("Training CSV must have a numeric 'y' (test time) column.")
+        if "ID" not in data.columns:
+            raise ValueError("Training CSV must have the Kaggle 'ID' column.")
+        if len(data) < 20:
+            raise ValueError("Training CSV must contain at least 20 labeled observations.")
+        if data.columns.has_duplicates:
+            raise ValueError("Training CSV has duplicate columns.")
 
-            X_test=test_array
-            models={
-                "Random Forest": RandomForestRegressor(),
-            }
-            params={
-                "Random Forest":{
-                    'n_estimators': [256]
-                }
-            }
-            #AFTER TRAINING THE MODEL WITH ALL THE BELOW PARAMTERS AND MODELS I FOUND RANDOM FOREST WITH 256
-            #ESTIMATERS FOUND OUT TO BE THE BEST ONE, DESPITE DECISION TREE WITH POISSON CRITERION IS GIVING ME
-            #EVEN BETTER RESULT, BUT ITS KIND OF OVERFITTING THE MODEL, SO I DECIDED TO OPT OUT FROM IT
-            '''models = {
-                "Random Forest": RandomForestRegressor(),
-                "Decision Tree": DecisionTreeRegressor(),
-                "Gradient Boosting": GradientBoostingRegressor(),
-                "Linear Regression": LinearRegression(),
-                "XGBRegressor": XGBRegressor(),
-                "CatBoosting Regressor": CatBoostRegressor(verbose=False),
-                "AdaBoost Regressor": AdaBoostRegressor(),
-            }
-            params={
-                "Decision Tree": {
-                    'criterion':['squared_error', 'friedman_mse', 'absolute_error', 'poisson']
-                },
-                "Random Forest":{
-                    'n_estimators': [8,16,32,64,128,256]
-                },
-                "Gradient Boosting":{
-                    # 'loss':['squared_error', 'huber', 'absolute_error', 'quantile'],
-                    'learning_rate':[.1,.01,.05,.001],
-                    'subsample':[0.6,0.7,0.75,0.8,0.85,0.9],
-                    'n_estimators': [8,16,32,64,128,256]
-                },
-                "Linear Regression":{},
-                "XGBRegressor":{
-                    'learning_rate':[.1,.01,.05,.001],
-                    'n_estimators': [8,16,32,64,128,256]
-                },
-                "CatBoosting Regressor":{
-                    'depth': [6,8,10],
-                    'learning_rate': [0.01, 0.05, 0.1],
-                    'iterations': [30, 50, 100]
-                },
-                "AdaBoost Regressor":{
-                    'learning_rate':[.1,.01,0.5,.001],
-                    'n_estimators': [8,16,32,64,128,256]
-                }
-                
-            }'''
+        target = pd.to_numeric(data["y"], errors="raise")
+        if not np.isfinite(target.to_numpy(dtype=float)).all():
+            raise ValueError("Training target 'y' contains missing or non-finite values.")
 
-            logging.info("initiating model evaluation")
+        features = data.drop(columns=["y"])
+        X_fit, X_holdout, y_fit, y_holdout = train_test_split(
+            features, target, test_size=self.test_size, random_state=self.random_state
+        )
+        before_filter = len(y_fit)
+        if self.filter_outliers:
+            q1, q3 = y_fit.quantile([0.25, 0.75])
+            iqr = q3 - q1
+            if iqr > 0:
+                keep = y_fit.between(q1 - 1.5 * iqr, q3 + 1.5 * iqr)
+                X_fit, y_fit = X_fit.loc[keep], y_fit.loc[keep]
+        if len(y_fit) < 10:
+            raise ValueError("Too few training examples remain after outlier filtering.")
 
-            #dictionary that stores r2 scores of all the models
-            model_report=evaluate_models(X_train=X_train,y_train=y_train,X_test=X_test,param=params,models=models)
+        model = Pipeline(steps=[
+            ("preprocessor", DataTransformation.create_preprocessor()),
+            ("regressor", RandomForestRegressor(
+                n_estimators=self.n_estimators,
+                random_state=self.random_state,
+                n_jobs=-1,
+            )),
+        ])
+        # Only X_fit/y_fit are used to fit the pipeline. Held-out examples do
+        # not influence column selection, imputation, encoding, or the forest.
+        model.fit(X_fit, y_fit)
+        holdout_preds = model.predict(X_holdout)
 
-            ## To get best model score from dict
-            best_model_score = max(sorted(model_report.values()))
+        baseline = DummyRegressor(strategy="mean").fit(X_fit, y_fit)
+        baseline_preds = baseline.predict(X_holdout)
 
-            
-            best_model_name = list(model_report.keys())[
-                list(model_report.values()).index(best_model_score)
-            ]
-            best_model = models[best_model_name]
+        competition_predictions = None
+        if competition_data is not None:
+            if "ID" not in competition_data.columns:
+                raise ValueError("Competition test CSV must have an 'ID' column.")
+            # Validate the entire external schema before persisting artifacts.
+            competition_predictions = model.predict(competition_data)
 
-            if best_model_score<0.5:
-                raise CustomException("No best model found")
-            
-            logging.info(f"Best model found for given training data")
-            print("The best model for the training data found out to be: ",best_model)
+        output = Path(output_dir)
+        output.mkdir(parents=True, exist_ok=True)
+        save_object(output / "model.pkl", model)
 
-            save_object(
-                file_path=self.model_trainer_config.trained_model_file_path,
-                obj=best_model
-            )
-            logging.info("succesfully saved the model pickle file")
+        cleaner = model.named_steps["preprocessor"].named_steps["feature_cleaner"]
+        metrics = {
+            "evaluation_protocol": "80/20 random holdout by default; fit and target-IQR filtering on training fold only",
+            "seed": self.random_state,
+            "test_fraction": self.test_size,
+            "n_estimators": self.n_estimators,
+            "labeled_rows_total": len(data),
+            "training_rows_before_filter": before_filter,
+            "training_rows_after_filter": len(y_fit),
+            "holdout_rows": len(y_holdout),
+            "excluded_input_fields": ["ID", "X4", "y"],
+            "dropped_near_constant_binary_features": cleaner.dropped_features_,
+            "model_holdout": self._scores(y_holdout, holdout_preds),
+            "mean_baseline_holdout": self._scores(y_holdout, baseline_preds),
+            "note": "Results depend on supplied data; saved model is the one assessed on the holdout. Competition test labels are not available.",
+        }
+        (output / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
+        pd.DataFrame({
+            "ID": X_holdout["ID"].to_numpy(),
+            "actual_y": y_holdout.to_numpy(),
+            "predicted_y": holdout_preds,
+        }).to_csv(output / "holdout_predictions.csv", index=False)
 
-            predicted=best_model.predict(X_train)
-            y_pred = best_model.predict(X_test)
-            df=pd.DataFrame(y_pred)
-            df.to_csv("output.csv",index=False)
-            r2_square = r2_score(y_train, predicted)
-            
-            return r2_square
+        if competition_data is not None:
+            pd.DataFrame({
+                "ID": competition_data["ID"].to_numpy(),
+                "y": competition_predictions,
+            }).to_csv(output / "competition_predictions.csv", index=False)
 
-
-        except Exception as e:
-            raise CustomException(e,sys)
+        return metrics

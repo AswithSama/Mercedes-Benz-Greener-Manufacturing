@@ -1,16 +1,29 @@
-<html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mercedes-Benz | Manufacturing Test-Time Prediction</title>
+  <style>
+    body { font: 16px/1.6 system-ui, sans-serif; max-width: 760px; margin: 64px auto; padding: 0 22px; color: #1b252e; background: #fafcfd; }
+    h1 { line-height: 1.2; } .lead { color: #526471; } .panel { background: white; border: 1px solid #d9e1e5; border-radius: 12px; padding: 30px; }
+    label { display: block; font-weight: 650; margin-bottom: 12px; } input { margin-bottom: 20px; max-width: 100%; }
+    button { padding: 11px 18px; color: white; background: #154f6a; border: 0; border-radius: 7px; cursor: pointer; }
+    .error { padding: 12px; background: #fff1ef; border: 1px solid #e6aaa5; border-radius: 7px; }
+    small { color: #62717d; }
+  </style>
+</head>
 <body>
-    <div class="login">
-        <h1>Mercedes-Benz-Greener-Manufacturing</h1>
-        <form action="{{ url_for('upload_file')}}" method="post" enctype="multipart/form-data">
-            <div class="mb-3">
-                <label class="form-label">Upload CSV</label>
-                <input class="form-control" type="file" name="file" accept=".csv" required />
-            </div>
-            <div class="mb-3">
-                <input class="btn btn-primary" type="submit" value="Predict" />
-            </div>
-        </form>
-    </div>
+  <h1>Manufacturing Test-Time Prediction</h1>
+  <p class="lead">A research prototype for the Kaggle Mercedes-Benz Greener Manufacturing regression task.</p>
+  <div class="panel">
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data">
+      <label for="file">Upload a test CSV</label>
+      <input id="file" type="file" name="file" accept=".csv,text/csv" required>
+      <div><button type="submit">Generate predictions</button></div>
+    </form>
+    <p><small>Use the original competition feature headers (including X0, X1, ...). An ID column is optional. Maximum upload: 10 MB. The model must be trained locally first.</small></p>
+  </div>
 </body>
 </html>

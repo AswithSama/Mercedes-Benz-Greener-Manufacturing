@@ -1,0 +1,6 @@
+-r requirements.txt
+matplotlib>=3.7
+seaborn>=0.12
+catboost>=1.2
+xgboost>=2.0
+jupyter>=1.0

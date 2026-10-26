@@ -1,108 +1,85 @@
-import sys
-import os
-from src.utils import save_object
-from src.exception import CustomException
-from src.logger import logging
+"""Leakage-safe, reusable transformations for manufacturing test-time data."""
 
-from dataclasses import dataclass
+from __future__ import annotations
+
 import pandas as pd
-from sklearn.compose import ColumnTransformer
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.compose import ColumnTransformer, make_column_selector
+from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
+from sklearn.utils.validation import check_is_fitted
 
 
+class FeatureCleaner(BaseEstimator, TransformerMixin):
+    """Learn the feature contract from *training rows only*.
 
+    ID is an identifier, X4 was excluded in the original experiment, and y is
+    the target. Near-constant binary columns are dropped using training data;
+    inference rows cannot change that selection.
+    """
 
+    def __init__(self, dominance_threshold: float = 0.99):
+        self.dominance_threshold = dominance_threshold
 
-@dataclass
-class DataTransformationConfig:
-    preprocessor_obj_file_path=os.path.join('artifacts',"preprocessor.pkl")
+    def fit(self, X: pd.DataFrame, y=None):
+        if not isinstance(X, pd.DataFrame):
+            raise ValueError("Expected a pandas DataFrame with named feature columns.")
+        if X.columns.has_duplicates:
+            raise ValueError("Duplicate CSV column names are not supported.")
+        if not 0.5 < self.dominance_threshold <= 1.0:
+            raise ValueError("dominance_threshold must be in (0.5, 1.0].")
+
+        candidates = X.drop(columns=["ID", "X4", "y"], errors="ignore")
+        if candidates.empty or len(candidates.columns) == 0:
+            raise ValueError("No usable input features were found.")
+
+        dropped = []
+        for name in candidates.select_dtypes(include="number").columns:
+            values = candidates[name].dropna()
+            if not values.empty and values.isin([0, 1]).all():
+                if values.value_counts(normalize=True).max() > self.dominance_threshold:
+                    dropped.append(name)
+
+        self.dropped_features_ = dropped
+        self.feature_columns_ = [name for name in candidates.columns if name not in dropped]
+        if not self.feature_columns_:
+            raise ValueError("All available features were removed during feature selection.")
+        return self
+
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        check_is_fitted(self, "feature_columns_")
+        if not isinstance(X, pd.DataFrame):
+            raise ValueError("Expected a pandas DataFrame with named feature columns.")
+        if X.columns.has_duplicates:
+            raise ValueError("Duplicate CSV column names are not supported.")
+        missing = [name for name in self.feature_columns_ if name not in X.columns]
+        if missing:
+            preview = ", ".join(missing[:12])
+            suffix = " ..." if len(missing) > 12 else ""
+            raise ValueError(f"CSV is missing {len(missing)} required feature column(s): {preview}{suffix}")
+        return X.loc[:, self.feature_columns_].copy()
+
 
 class DataTransformation:
+    """Build a fitted-on-train-only pipeline for categorical and numeric data."""
 
-    def __init__(self):
-        self.data_transformation_config=DataTransformationConfig()
-
-    def create_preprocessor(self, whole_dataset):
-
-        categorical_columns = whole_dataset.select_dtypes(include='object').columns.tolist()
-
-        logging.info("creating a pipeline and column transformer ")
-
-        # Create a pipeline for encoding categorical features
-        cat_pipeline = Pipeline(steps=[
-            ("one_hot_encoder", OneHotEncoder(handle_unknown='ignore'))
+    @staticmethod
+    def create_preprocessor() -> Pipeline:
+        numeric = Pipeline(steps=[("imputer", SimpleImputer(strategy="median"))])
+        categorical = Pipeline(steps=[
+            ("imputer", SimpleImputer(strategy="most_frequent")),
+            ("encoder", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
         ])
-
-        preprocessor = ColumnTransformer(
+        column_transformer = ColumnTransformer(
             transformers=[
-                ("cat_pipeline", cat_pipeline, categorical_columns)
-            ],remainder='passthrough'
+                ("categorical", categorical, make_column_selector(dtype_include=["object", "category"])),
+                ("numeric", numeric, make_column_selector(dtype_include="number")),
+            ],
+            remainder="drop",
+            sparse_threshold=0.0,
         )
-        logging.info("successfully created preprocessor which can be dumped as a pickle file and can be reused later ")
-
-        return preprocessor
-
-
-
-    def get_data_transformer_object(self):
-        try:
-                
-            train_df=pd.read_csv('artifacts/train.csv')
-            X_test=pd.read_csv('artifacts/test.csv')
-
-            #ID is not required and X4 is one category dominant (of character type) so we remove both of them
-            df2=train_df.drop(['ID','X4'],axis='columns')
-            X_test=X_test.drop(['ID','X4'],axis='columns')
-
-
-            #DECIDED TO YOU INTERQUARTILE RANGE TECHNIQUE TO REMOVE OUTLIERS
-            #upper and lower quartiles
-            q1=df2['y'].quantile(0.25)
-            q3=df2['y'].quantile(0.75)
-            #upper and lower limit
-            upper_limit=q3+(q3-q1)*1.5
-            lower_limit=q1-(q3-q1)*1.5
-            #filtering the outliers
-            outlier_indices=df2[(df2['y']>upper_limit) | (df2['y'] < lower_limit)].index
-            df3=df2.drop(outlier_indices,axis=0).reset_index(drop=True)  
-
-
-
-            X_train=df3.drop(['y'],axis=1)
-            y_train=df3.y
-
-            #REMOVING THE COLUMNS (binary type) WHICH ARE ONE CATEOGORY DOMINANT AS THEY DONOT HAVE ANY IMPACT ON THE FINAL RESULT AND CERTAINLY AN OVERHEAD
-            check_X=X_train.select_dtypes(exclude='object')
-                        
-            for col in check_X:
-                zeroes=(check_X[col]==0).sum()
-                ones=(check_X[col]==1).sum()
-                zeroes_percentage=(zeroes/(ones+zeroes))*100
-                if zeroes_percentage >99 or zeroes_percentage<1:
-                    X_train.drop(col,axis=1,inplace=True)
-                    X_test.drop(col,axis=1,inplace=True)
-  
-
-            #CONCATINATING THE TRAIN AND TEST SETS ARE REQUIRED TO CONSIDER ALL THE CATEGORIES OF ALL FEATURES FROM BOTH TRAIN AND TEST SETS.
-            
-            # Applying preprocessor pipeline
-            whole_dataset=pd.concat([X_train,X_test],axis=0)
-            preprocessing_obj=self.create_preprocessor(whole_dataset)
-            preprocessing_obj.fit(whole_dataset)
-            save_object(
-                file_path=self.data_transformation_config.preprocessor_obj_file_path,
-                obj=preprocessing_obj
-            )
-            logging.info("successfully created the preprocessing object")
-
-            
-            X_train = preprocessing_obj.transform(X_train)
-            X_test = preprocessing_obj.transform(X_test)
-
-            return X_train, X_test, y_train, self.data_transformation_config.preprocessor_obj_file_path
-                    
-        except Exception as e:
-            raise CustomException(e,sys)
-    
-   
+        return Pipeline(steps=[
+            ("feature_cleaner", FeatureCleaner()),
+            ("column_transformer", column_transformer),
+        ])

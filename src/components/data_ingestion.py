@@ -1,76 +1,52 @@
-import os
-import sys
-from src.exception import CustomException
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from src.logger import logging
-import pandas as pd
+"""Optional Kaggle download for the original competition data.
 
-from sklearn.model_selection import train_test_split
-from dataclasses import dataclass
-from kaggle.api.kaggle_api_extended import KaggleApi
-from src.components.data_transformation import DataTransformation
-from src.components.data_transformation import DataTransformationConfig
+Local train/test CSV files are supported without Kaggle credentials.
+"""
 
-from src.components.model_trainer import ModelTrainerConfig
-from src.components.model_trainer import ModelTrainer
+from __future__ import annotations
 
-@dataclass
-class DataIngestionConfig:
-    train_data_path: str=os.path.join('artifacts',"train.csv")
-    test_data_path: str=os.path.join('artifacts',"test.csv")
+from pathlib import Path
+from zipfile import ZipFile
+from io import BytesIO
+
 
 class DataIngestion:
-    def __init__(self):
-        self.ingestion_config=DataIngestionConfig()
-        self.api=KaggleApi()
-        self.api.authenticate()
-    def download_from_kaggle(self):
-        logging.info(f"Downloading the csv files from Kaggle dataset: mercedes-benz-greener-manufacturing")
+    competition = "mercedes-benz-greener-manufacturing"
+
+    @classmethod
+    def download_from_kaggle(cls, data_dir: str | Path = "notebook/data") -> tuple[Path, Path]:
         try:
-            # Downloading the dataset
-            self.api.competition_download_file('mercedes-benz-greener-manufacturing','train.csv.zip',path='notebook/data')
-            self.api.competition_download_file('mercedes-benz-greener-manufacturing','test.csv.zip',path='notebook/data')
+            from kaggle.api.kaggle_api_extended import KaggleApi
+        except ImportError as exc:
+            raise RuntimeError("Install the Kaggle client: python -m pip install kaggle") from exc
 
-            import zipfile
-            with zipfile.ZipFile('notebook/data/train.csv.zip', 'r') as zip_ref:
-                zip_ref.extractall('notebook/data')
-            with zipfile.ZipFile('notebook/data/test.csv.zip', 'r') as zip_ref:
-                zip_ref.extractall('notebook/data')
+        directory = Path(data_dir)
+        directory.mkdir(parents=True, exist_ok=True)
+        api = KaggleApi()
+        api.authenticate()  # only when explicitly requested
+        api.competition_download_files(cls.competition, path=str(directory), quiet=False)
+        archive = directory / f"{cls.competition}.zip"
+        if not archive.exists():
+            raise FileNotFoundError(f"Kaggle archive not found at {archive}")
 
+        with ZipFile(archive) as zf:
+            members = [m for m in zf.infolist() if not m.is_dir()]
+            for name in ("train.csv", "test.csv"):
+                direct = [m for m in members if Path(m.filename).name == name]
+                nested = [m for m in members if Path(m.filename).name == name + ".zip"]
+                if len(direct) == 1:
+                    content = zf.read(direct[0])
+                elif len(nested) == 1:
+                    # The competition has also been distributed as nested
+                    # train.csv.zip / test.csv.zip files.
+                    with ZipFile(BytesIO(zf.read(nested[0]))) as inner:
+                        inner_members = [m for m in inner.infolist()
+                                         if Path(m.filename).name == name and not m.is_dir()]
+                        if len(inner_members) != 1:
+                            raise ValueError(f"Expected {name} inside {nested[0].filename}")
+                        content = inner.read(inner_members[0])
+                else:
+                    raise ValueError(f"Cannot locate {name} in {archive}")
+                (directory / name).write_bytes(content)
 
-            logging.info(f"Downloaded the csv files to notebook/data folder")
-
-            df_train=pd.read_csv('notebook/data/train.csv')
-            df_test=pd.read_csv('notebook/data/test.csv')
-
-            os.makedirs(os.path.dirname(self.ingestion_config.train_data_path), exist_ok=True)
-
-            df_train.to_csv(self.ingestion_config.train_data_path, index=False, header=True)
-            df_test.to_csv(self.ingestion_config.test_data_path, index=False, header=True)
-
-            
-            logging.info("Train and Test data ingestion is Done")
-
-            return (
-                self.ingestion_config.train_data_path,
-                self.ingestion_config.test_data_path
-            )
-        except Exception as e:
-            raise CustomException(e, sys)
-
-if __name__=="__main__":
-    obj=DataIngestion()
-    #downloading from kaggle
-    obj.download_from_kaggle()
-    train_data,test_data=obj.download_from_kaggle()
-
-    logging.info(" starting transforming data.....") 
-    data_transformation=DataTransformation()
-    X_train,test_arr,y_train,_=data_transformation.get_data_transformer_object()
-    
-
-    logging.info(" starting training the model.....") 
-    modeltrainer=ModelTrainer()
-    print(modeltrainer.initiate_model_trainer(X_train,y_train,test_arr))
-
-
+        return directory / "train.csv", directory / "test.csv"

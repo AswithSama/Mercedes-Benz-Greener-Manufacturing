@@ -160,3 +160,31 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+
+# Generated data, trained objects and evaluation outputs
+/artifacts/
+/notebook/data/
+/logs/
+/output.csv
+/.venv/
+.env
+.env.*
+
+# Keep a shareable configuration template
+!.env.example
+
+# Exploratory training logs are generated locally
+/catboost_info/
+
+# Local datasets and trained model artifacts
+/notebook/data/
+/artifacts/
+*.pkl
+*.joblib
+
+# Local environments
+.venv/
+__pycache__/
+.pytest_cache/
+.env
+.DS_Store
